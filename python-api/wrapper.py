@@ -20,7 +20,7 @@ ee.Initialize()
 # DO THE JOB
 ###########################################
 
-def s1_preproc(params):
+def s1_preproc(params, skip_processing=False):
     """
     Applies preprocessing to a collection of S1 images to return an analysis ready sentinel-1 data.
 
@@ -45,7 +45,6 @@ def s1_preproc(params):
     APPLY_TERRAIN_FLATTENING = params['APPLY_TERRAIN_FLATTENING']
     APPLY_SPECKLE_FILTERING = params['APPLY_SPECKLE_FILTERING']
     POLARIZATION = params['POLARIZATION']
-    ORBIT = params['ORBIT']
     SPECKLE_FILTER_FRAMEWORK = params['SPECKLE_FILTER_FRAMEWORK']
     SPECKLE_FILTER = params['SPECKLE_FILTER']
     SPECKLE_FILTER_KERNEL_SIZE = params['SPECKLE_FILTER_KERNEL_SIZE']
@@ -131,12 +130,12 @@ def s1_preproc(params):
     # select S-1 image collection
     s1 = ee.ImageCollection('COPERNICUS/S1_GRD_FLOAT') \
         .filter(ee.Filter.eq('instrumentMode', 'IW')) \
-        .filter(ee.Filter.eq('resolution_meters', 10)) \
         .filterDate(START_DATE, STOP_DATE) \
         .filterBounds(ROI)
+    # .filter(ee.Filter.eq('resolution_meters', 10)) \
 
     # select orbit
-    if (ORBIT != 'BOTH'):
+    if ORBIT != 'BOTH':
         s1 = s1.filter(ee.Filter.eq('orbitProperties_pass', ORBIT))
 
     # select polarization
@@ -149,53 +148,56 @@ def s1_preproc(params):
         
     print('Number of images in collection: ', s1.size().getInfo())
 
-    ###########################################
-    # 2. ADDITIONAL BORDER NOISE CORRECTION
-    ###########################################
+    if not skip_processing:
+        ###########################################
+        # 2. ADDITIONAL BORDER NOISE CORRECTION
+        ###########################################
 
-    if (APPLY_BORDER_NOISE_CORRECTION):
-        s1_1 = s1.map(bnc.f_mask_edges)
-        print('Additional border noise correction is completed')
+        if APPLY_BORDER_NOISE_CORRECTION:
+            s1_1 = s1.map(bnc.f_mask_edges)
+            print('Additional border noise correction is completed')
+        else:
+            s1_1 = s1
+        ########################
+        # 3. SPECKLE FILTERING
+        #######################
+
+        if APPLY_SPECKLE_FILTERING:
+            if SPECKLE_FILTER_FRAMEWORK == 'MONO':
+                s1_1 = ee.ImageCollection(sf.MonoTemporal_Filter(s1_1, SPECKLE_FILTER_KERNEL_SIZE, SPECKLE_FILTER))
+                print('Mono-temporal speckle filtering is completed')
+            else:
+                s1_1 = ee.ImageCollection(sf.MultiTemporal_Filter(s1_1, SPECKLE_FILTER_KERNEL_SIZE, SPECKLE_FILTER, SPECKLE_FILTER_NR_OF_IMAGES))
+                print('Multi-temporal speckle filtering is completed')
+
+        ########################
+        # 4. TERRAIN CORRECTION
+        #######################
+
+        if APPLY_TERRAIN_FLATTENING:
+            s1_1 = trf.slope_correction(
+                s1_1, TERRAIN_FLATTENING_MODEL,
+                DEM, TERRAIN_FLATTENING_ADDITIONAL_LAYOVER_SHADOW_BUFFER
+            )
+            print('Radiometric terrain normalization is completed')
     else:
         s1_1 = s1
-    ########################
-    # 3. SPECKLE FILTERING
-    #######################
 
-    if (APPLY_SPECKLE_FILTERING):
-        if (SPECKLE_FILTER_FRAMEWORK == 'MONO'):
-            s1_1 = ee.ImageCollection(sf.MonoTemporal_Filter(s1_1, SPECKLE_FILTER_KERNEL_SIZE, SPECKLE_FILTER))
-            print('Mono-temporal speckle filtering is completed')
-        else:
-            s1_1 = ee.ImageCollection(sf.MultiTemporal_Filter(s1_1, SPECKLE_FILTER_KERNEL_SIZE, SPECKLE_FILTER, SPECKLE_FILTER_NR_OF_IMAGES))
-            print('Multi-temporal speckle filtering is completed')
-
-    ########################
-    # 4. TERRAIN CORRECTION
-    #######################
-
-    if (APPLY_TERRAIN_FLATTENING):
-        s1_1 = (trf.slope_correction(s1_1 
-                                    ,TERRAIN_FLATTENING_MODEL
-                                        ,DEM
-                                                ,TERRAIN_FLATTENING_ADDITIONAL_LAYOVER_SHADOW_BUFFER))
-        print('Radiometric terrain normalization is completed')
 
     ########################
     # 5. OUTPUT
     #######################
 
-    if (FORMAT == 'DB'):
+    if FORMAT == 'DB':
         s1_1 = s1_1.map(helper.lin_to_db)
         
         
     #clip to roi
-    if (CLIP_TO_ROI):
+    if CLIP_TO_ROI:
         s1_1 = s1_1.map(lambda image: image.clip(ROI))
         
         
-    if (SAVE_ASSET): 
-            
+    if SAVE_ASSET:
         size = s1_1.size().getInfo()
         imlist = s1_1.toList(size)
         for idx in range(0, size):
@@ -205,7 +207,6 @@ def s1_preproc(params):
             #name = str(idx)
             description = name           
             assetId = ASSET_ID+'/'+name
-
             task = ee.batch.Export.image.toAsset(image=img,
                                                  assetId=assetId,
                                                  description=description,

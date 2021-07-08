@@ -94,7 +94,7 @@ def leefilter(image, KERNEL_SIZE):
     return image.addBands(output, None, True)
 
 
-def gammamap(image,KERNEL_SIZE): 
+def gammamap(image, KERNEL_SIZE):
     
     """
     Gamma Maximum a-posterior Filter applied to one image. It is implemented as described in 
@@ -581,15 +581,15 @@ def MultiTemporal_Filter(coll,KERNEL_SIZE, SPECKLE_FILTER,NR_OF_IMAGES):
                 Filtered image and image ratio
 
             """
-            if (SPECKLE_FILTER=='BOXCAR'):
+            if SPECKLE_FILTER == 'BOXCAR':
                 _filtered = boxcar(image, KERNEL_SIZE).select(bands).rename(meanBands) 
-            elif (SPECKLE_FILTER=='LEE'):
+            elif SPECKLE_FILTER == 'LEE':
                 _filtered = leefilter(image, KERNEL_SIZE).select(bands).rename(meanBands)
-            elif (SPECKLE_FILTER=='GAMMA MAP'):
+            elif SPECKLE_FILTER == 'GAMMA MAP':
                 _filtered = gammamap(image, KERNEL_SIZE).select(bands).rename(meanBands)
-            elif (SPECKLE_FILTER=='REFINED LEE'):
+            elif SPECKLE_FILTER == 'REFINED LEE':
                 _filtered = RefinedLee(image).select(bands).rename(meanBands)
-            elif (SPECKLE_FILTER=='LEE SIGMA'):
+            elif SPECKLE_FILTER == 'LEE SIGMA':
                 _filtered = leesigma(image, KERNEL_SIZE).select(bands).rename(meanBands)
     
             _ratio = image.select(bands).divide(_filtered).rename(ratioBands) 

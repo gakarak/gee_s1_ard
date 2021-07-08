@@ -64,35 +64,139 @@ References
     Remote Sensing of Environment 2222015,156, 1–10.
 
     """
+import os
 
 import wrapper as wp
 import ee
+import speckle_filter as sf
 
-ee.Initialize()
 
-#/***************************/ 
-#// MAIN
-#/***************************/ 
-#Parameters
-parameter = {  'START_DATE': '2018-01-01', 
-            'STOP_DATE': '2018-01-10',        
-            'POLARIZATION': 'VVVH',
-            'ORBIT' : 'DESCENDING',
-            'ROI': ee.Geometry.Rectangle([-47.1634, -3.00071, -45.92746, -5.43836]),
-            'APPLY_BORDER_NOISE_CORRECTION': False,
-            'APPLY_SPECKLE_FILTERING': True,
-            'SPECKLE_FILTER_FRAMEWORK':'MULTI',
-            'SPECKLE_FILTER': 'GAMMA MAP',
-            'SPECKLE_FILTER_KERNEL_SIZE': 9,
-            'SPECKLE_FILTER_NR_OF_IMAGES':10,
-            'APPLY_TERRAIN_FLATTENING': True,
-            'DEM': ee.Image('USGS/SRTMGL1_003'),
-            'TERRAIN_FLATTENING_MODEL': 'VOLUME',
-            'TERRAIN_FLATTENING_ADDITIONAL_LAYOVER_SHADOW_BUFFER':0,
-            'FORMAT': 'DB',
-            'CLIP_TO_ROI': False,
-            'SAVE_ASSET': False, 
-            'ASSET_ID': "users/adugnagirma"
-            }
-#processed s1 collection
-s1_processed = wp.s1_preproc(parameter)
+
+
+parameter = {
+    'START_DATE': '2021-01-01',
+    'STOP_DATE': '2021-07-01',
+    'POLARIZATION': 'VVVH',
+    # 'POLARIZATION': 'VV',
+    'ORBIT': 'DESCENDING',
+    # 'ROI': ee.Geometry.Rectangle([-47.1634, -3.00071, -45.92746, -5.43836]),
+    'ROI': ee.Geometry.Rectangle([5.71773, 52.65939, 5.7766, 52.7029]),
+    'APPLY_BORDER_NOISE_CORRECTION': True,
+    'APPLY_SPECKLE_FILTERING': True,
+    'SPECKLE_FILTER_FRAMEWORK': 'MULTI',
+    # 'SPECKLE_FILTER': 'GAMMA MAP',
+    # 'SPECKLE_FILTER': 'REFINED LEE',
+    'SPECKLE_FILTER': 'LEE',
+    'SPECKLE_FILTER_KERNEL_SIZE': 9,
+    'SPECKLE_FILTER_NR_OF_IMAGES': 10,
+    'APPLY_TERRAIN_FLATTENING': True,
+    'DEM': ee.Image('USGS/SRTMGL1_003'),
+    'TERRAIN_FLATTENING_MODEL': 'VOLUME',
+    'TERRAIN_FLATTENING_ADDITIONAL_LAYOVER_SHADOW_BUFFER': 0,
+    'FORMAT': 'DB',
+    'CLIP_TO_ROI': True,
+    'SAVE_ASSET': False,
+    'ASSET_ID': "users/adugnagirma"
+}
+
+
+import requests
+import io
+import zipfile
+from zipfile import ZipFile
+from typing import Union as U, Optional as O
+import datetime as dt
+from tqdm import tqdm
+
+
+# MAP_S1_FNS = {
+#     'VV': 'download.VV.tif',
+#     'VH': 'download.VH.tif',
+#     'angle': 'download.angle.tif',
+# }
+
+MAP_S1_FNS = {
+    'VV': 'VV.tif',
+    'VH': 'VH.tif',
+    'angle': 'angle.tif',
+}
+
+
+def map_gee_zip(path_zip: U[str, ZipFile], map_fn: dict, to_bytes=False) -> dict:
+    if isinstance(path_zip, str):
+        z = ZipFile(path_zip)
+    else:
+        z = path_zip
+    lst_ = z.filelist
+    ret = {}
+    for x in lst_:
+        fn = x.filename
+        s = fn.split('.')[-2]
+        if s in map_fn:
+            if to_bytes:
+                with z.open(x, 'r') as fz:
+                    # ret[map_fn[s]] = fz.read()
+                    ret[s] = fz.read()
+            else:
+                # ret[map_fn[s]] = f'/vsizip/{path_zip}/{fn}'
+                ret[s] = f'/vsizip/{path_zip}/{fn}'
+    return ret
+
+
+def get_data(url: str) -> dict:
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        buffer = io.BytesIO()
+        buffer.write(r.content)
+    with zipfile.ZipFile(buffer, 'r') as fz:
+        data = map_gee_zip(fz, MAP_S1_FNS, to_bytes=True)
+    return data
+
+
+def save_data(data: dict, dir_out: str, map_fns: O[dict] = None) -> bool:
+    if map_fns is None:
+        map_fns = MAP_S1_FNS
+    ret = True
+    for x, y in data.items():
+        path_out = os.path.join(dir_out, map_fns[x])
+        os.makedirs(os.path.dirname(path_out), exist_ok=True)
+        with open(path_out, 'wb') as f:
+            f.write(y)
+        if not os.path.isfile(path_out):
+            ret = False
+    return ret
+
+
+if __name__ == '__main__':
+    ee.Initialize()
+    print('-')
+    is_raw = False
+
+    # processed s1 collection
+    s1_processed = wp.s1_preproc(parameter, skip_processing=is_raw)
+    s1_processed_list = s1_processed.toList(s1_processed.size())
+    ee_infos = s1_processed_list.getInfo()
+
+    # roi = parameter['ROI']
+    # col = s1 = ee.ImageCollection('COPERNICUS/S1_GRD_FLOAT') \
+    #     .filter(ee.Filter.eq('instrumentMode', 'IW')) \
+    #     .filterDate('2021-03-01', '2021-04-01') \
+    #     .filterBounds(roi)
+    # ee_image = col.first().clip(roi)
+    # # ee_image_flt = sf.gammamap(ee_image, 9)
+    # ee_image_flt = sf.leefilter(ee_image, 9)
+
+    dir_out: str = '/home/ar/tmp/222/processing_lee'
+    for xi, x in enumerate(tqdm(ee_infos)):
+        date_id = dt.datetime.isoformat(dt.datetime.strptime(x['properties']['system:index'].split('_')[4][:8], '%Y%m%d'))[:10]
+        if is_raw:
+            map_fns = {z1: f'{date_id}-{z1}-raw.tif' for z1, z2 in MAP_S1_FNS.items()}
+        else:
+            map_fns = {z1: f'{date_id}-{z1}.tif' for z1, z2 in MAP_S1_FNS.items()}
+        ee_image = ee.Image(s1_processed_list.get(xi))
+        url = ee_image.getDownloadURL()
+        data = get_data(url)
+        #
+        tmp_ = save_data(data, dir_out, map_fns)
+
+    print('-')
