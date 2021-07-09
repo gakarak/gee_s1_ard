@@ -74,13 +74,21 @@ import speckle_filter as sf
 
 
 parameter = {
-    'START_DATE': '2021-01-01',
-    'STOP_DATE': '2021-07-01',
+    'START_DATE': '2018-03-26',
+    'STOP_DATE': '2018-10-01',
+    # '': '',
     'POLARIZATION': 'VVVH',
     # 'POLARIZATION': 'VV',
     'ORBIT': 'DESCENDING',
     # 'ROI': ee.Geometry.Rectangle([-47.1634, -3.00071, -45.92746, -5.43836]),
-    'ROI': ee.Geometry.Rectangle([5.71773, 52.65939, 5.7766, 52.7029]),
+    # 'ROI': ee.Geometry.Rectangle([5.71773, 52.65939, 5.7766, 52.7029]),
+    'ROI': ee.Geometry.Rectangle([
+        28.194893388795947, 48.757613438406004,
+        28.346890822621333, 48.85471579873528
+    ]),
+
+
+    ''
     'APPLY_BORDER_NOISE_CORRECTION': True,
     'APPLY_SPECKLE_FILTERING': True,
     'SPECKLE_FILTER_FRAMEWORK': 'MULTI',
@@ -186,7 +194,7 @@ if __name__ == '__main__':
     # # ee_image_flt = sf.gammamap(ee_image, 9)
     # ee_image_flt = sf.leefilter(ee_image, 9)
 
-    dir_out: str = '/home/ar/tmp/222/processing_lee'
+    dir_out: str = '/home/ar/tmp/processing_lee'
     for xi, x in enumerate(tqdm(ee_infos)):
         date_id = dt.datetime.isoformat(dt.datetime.strptime(x['properties']['system:index'].split('_')[4][:8], '%Y%m%d'))[:10]
         if is_raw:

@@ -204,5 +204,6 @@ def slope_correction(collection, TERRAIN_FLATTENING_MODEL
         output = gamma0_flat.mask(mask).rename(bandNames).copyProperties(image)
         output = ee.Image(output).addBands(image.select('angle'), None, True)
 
+        output = output.set('id_', image.id())
         return output.set('system:time_start', image.get('system:time_start'))
     return collection.map(_correct)
